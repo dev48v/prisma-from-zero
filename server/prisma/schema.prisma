@@ -1,0 +1,64 @@
+// STEP 3 — Prisma schema. ONE file owns the database shape and the
+// generated TypeScript client. `prisma migrate dev` produces SQL
+// migrations from this file; `prisma generate` emits the typed client.
+//
+// Why Prisma over hand-rolled SQL?
+//   - Compile-time typed query results (no DTO sync drift)
+//   - Migrations as version-controlled SQL files (not orphaned scripts)
+//   - Relations defined once, traversable in queries (`include: { photo: true }`)
+//
+// What Prisma is NOT good for:
+//   - Complex aggregations / window functions → drop to $queryRaw
+//   - Bulk UNNEST inserts → use $executeRaw or createMany (no UNNEST)
+generator client {
+  provider = "prisma-client-js"
+  // binaryTargets covers BOTH local dev (Windows / Mac) AND the
+  // Render Linux x64 runtime + the Alpine variant Docker uses.
+  // Without this, `prisma generate` on Windows produces native-only
+  // binaries that error at runtime in the container.
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Photo — one row per NASA APOD entry (one per calendar day).
+// `date` is the natural unique key — re-ingesting yesterday's photo
+// must update the existing row, not duplicate it.
+model Photo {
+  id          String     @id @default(uuid())
+  date        DateTime   @unique @db.Date
+  title       String
+  explanation String     @db.Text
+  url         String
+  hdurl       String?
+  mediaType   String     @map("media_type")
+  copyright   String?
+  // We store the raw JSON payload too. Same logic as Day 31: if NASA
+  // adds a field tomorrow, we can surface it without a migration.
+  payload     Json
+  fetchedAt   DateTime   @default(now()) @map("fetched_at")
+  favorites   Favorite[]
+
+  // Composite covering index for the gallery query "give me the
+  // newest 20 photos". Prisma compiles this to `CREATE INDEX ...`.
+  @@index([date(sort: Desc)])
+  @@map("photos")
+}
+
+// Favorite — m:1 with Photo. One favorite per photo (you can either
+// like a photo or not — no "like count"). Unique constraint enforces.
+//
+// onDelete: Cascade means deleting a Photo (we won't, but defensively)
+// removes its favorite row too. The alternative — orphaned rows —
+// is a classic bug source in apps that grow into multi-user state.
+model Favorite {
+  id        String   @id @default(uuid())
+  photoId   String   @unique @map("photo_id")
+  photo     Photo    @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("favorites")
+}
