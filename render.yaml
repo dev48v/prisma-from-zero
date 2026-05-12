@@ -1,0 +1,29 @@
+# Render Blueprint — managed Postgres + Docker Web.
+databases:
+  - name: prisma-pg
+    plan: free
+    region: oregon
+    postgresMajorVersion: 16
+
+services:
+  - type: web
+    name: prisma-from-zero
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prisma-pg
+          property: connectionString
+      - key: INGEST_INTERVAL_MS
+        value: 21600000
+      - key: BACKFILL_DAYS
+        value: 90
+      - key: NASA_API_KEY
+        value: DEMO_KEY

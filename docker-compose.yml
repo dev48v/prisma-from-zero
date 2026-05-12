@@ -1,0 +1,46 @@
+# Local dev stack.
+#   docker compose up -d
+#   docker compose exec api npx prisma migrate dev --name init   # first time
+#   docker compose logs -f api
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pfz2-postgres
+    environment:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: prisma
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U prisma -d prisma']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.dev
+    container_name: pfz2-api
+    environment:
+      - DATABASE_URL=postgresql://prisma:prisma@postgres:5432/prisma
+      - PORT=8080
+      - INGEST_INTERVAL_MS=21600000
+      - BACKFILL_DAYS=90
+      - NASA_API_KEY=DEMO_KEY
+    ports:
+      - '8080:8080'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./server/src:/app/server/src
+      - ./server/prisma:/app/server/prisma
+      - ./server/package.json:/app/server/package.json
+      - ./server/tsconfig.json:/app/server/tsconfig.json
+
+volumes:
+  pgdata:
